@@ -1,4 +1,4 @@
-# .github/workflows/deploy.yml
+# .github/workflows/deploy.yml（带 SSH 密钥配置的版本）
 name: Deploy to Server
 
 on:
@@ -25,6 +25,30 @@ jobs:
             BRANCH="${{ github.ref_name }}"
             APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
             
+            # 配置 GitHub SSH 密钥（如果还没有）
+            SSH_KEY_PATH="/home/${{ secrets.SERVER_USER }}/.ssh/github_key"
+            if [ ! -f "$SSH_KEY_PATH" ]; then
+              echo "配置 GitHub SSH 密钥..."
+              mkdir -p /home/${{ secrets.SERVER_USER }}/.ssh
+              # 从 secrets 中读取 GitHub SSH 私钥
+              echo "${{ secrets.GITHUB_SSH_PRIVATE_KEY }}" > $SSH_KEY_PATH
+              chmod 600 $SSH_KEY_PATH
+              
+              # 配置 SSH config
+              cat >> /home/${{ secrets.SERVER_USER }}/.ssh/config << EOF
+              Host github.com
+                HostName github.com
+                User git
+                IdentityFile $SSH_KEY_PATH
+                StrictHostKeyChecking no
+              EOF
+              chmod 600 /home/${{ secrets.SERVER_USER }}/.ssh/config
+            fi
+            
+            # 测试 GitHub SSH 连接
+            echo "测试 GitHub SSH 连接..."
+            ssh -T git@github.com -o StrictHostKeyChecking=no || true
+            
             # 创建应用目录
             mkdir -p $APP_DIR
             cd $APP_DIR
@@ -32,14 +56,11 @@ jobs:
             # 拉取代码（使用 SSH）
             if [ -d ".git" ]; then
               echo "拉取最新代码..."
-              
-              # 检查并更新 remote URL 为 SSH
               CURRENT_URL=$(git config --get remote.origin.url)
               if [[ ! "$CURRENT_URL" =~ ^git@ ]]; then
                 echo "将 remote URL 从 HTTPS 改为 SSH..."
                 git remote set-url origin $REPO_URL
               fi
-              
               git fetch origin
               git checkout $BRANCH
               git pull origin $BRANCH
@@ -52,7 +73,6 @@ jobs:
             # 显示当前版本
             CURRENT_COMMIT=$(git rev-parse --short HEAD)
             echo "部署版本: $CURRENT_COMMIT"
-            echo "分支: $BRANCH"
             
             # 构建 Docker 镜像
             echo "开始构建 Docker 镜像..."
@@ -66,20 +86,11 @@ jobs:
             echo "启动新容器..."
             docker compose up -d
             
-            # 查看容器状态
-            echo "容器状态:"
-            docker ps | grep crawler-service
-            
-            # 查看日志（前20行）
-            echo "最近日志:"
-            docker logs --tail 20 crawler-service || echo "容器启动中，暂无日志"
-            
-            # 清理旧镜像
+            # 清理资源
             echo "清理旧镜像..."
             docker image prune -f
-            
-            # 删除旧版本镜像（保留最近5个）
-            docker images crawler-service --format "table {{.Repository}}:{{.Tag}} {{.CreatedAt}}" | grep -v "latest" | tail -n +6 | awk '{print $1}' | xargs -r docker rmi || true
-            
-            # 清理未使用的资源
             docker system prune -f --filter "until=24h"
+            
+            # 显示服务状态
+            echo "=== 部署完成 ==="
+            docker ps --filter "name=crawler-service"
