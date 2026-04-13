@@ -22,14 +22,14 @@ jobs:
           script_stop: true
           script: |
             set -e
-            SSH_KEY_PATH="/home/${{ secrets.SERVER_USER }}/.ssh/github_key"
+            SSH_KEY_PATH="/home/${{ secrets.SERVER_USER }}/.ssh/config"
             REPO_URL="git@github.com:${{ github.repository }}.git"
             BRANCH="${{ github.ref_name }}"
             APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
             echo "配置 GitHub SSH 密钥..."
             # 配置 Git 使用指定的 SSH 密钥（临时方式）
             export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i /tmp/deploy_key_$$"
-            
+            cat $SSH_KEY_PATH
             # 将私钥写入临时文件
             echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key_$$
             chmod 600 /tmp/deploy_key_$$
