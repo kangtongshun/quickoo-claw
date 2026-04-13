@@ -1,4 +1,4 @@
-# .github/workflows/deploy.yml（带 SSH 密钥配置的版本）
+# .github/workflows/deploy.yml
 name: Deploy to Server
 
 on:
@@ -19,78 +19,43 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
+          script_stop: true
           script: |
-            # 设置变量
+            set -e
+            
             REPO_URL="git@github.com:${{ github.repository }}.git"
             BRANCH="${{ github.ref_name }}"
             APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
             
-            # 配置 GitHub SSH 密钥（如果还没有）
-            SSH_KEY_PATH="/home/${{ secrets.SERVER_USER }}/.ssh/github_key"
-            if [ ! -f "$SSH_KEY_PATH" ]; then
-              echo "配置 GitHub SSH 密钥..."
-              mkdir -p /home/${{ secrets.SERVER_USER }}/.ssh
-              # 从 secrets 中读取 GitHub SSH 私钥
-              echo "${{ secrets.GITHUB_SSH_PRIVATE_KEY }}" > $SSH_KEY_PATH
-              chmod 600 $SSH_KEY_PATH
-              
-              # 配置 SSH config
-              cat >> /home/${{ secrets.SERVER_USER }}/.ssh/config << EOF
-              Host github.com
-                HostName github.com
-                User git
-                IdentityFile $SSH_KEY_PATH
-                StrictHostKeyChecking no
-              EOF
-              chmod 600 /home/${{ secrets.SERVER_USER }}/.ssh/config
-            fi
+            echo "开始部署 - 分支: $BRANCH"
             
-            # 测试 GitHub SSH 连接
-            echo "测试 GitHub SSH 连接..."
-            ssh -T git@github.com -o StrictHostKeyChecking=no || true
-            
-            # 创建应用目录
             mkdir -p $APP_DIR
             cd $APP_DIR
             
-            # 拉取代码（使用 SSH）
             if [ -d ".git" ]; then
               echo "拉取最新代码..."
-              CURRENT_URL=$(git config --get remote.origin.url)
-              if [[ ! "$CURRENT_URL" =~ ^git@ ]]; then
-                echo "将 remote URL 从 HTTPS 改为 SSH..."
-                git remote set-url origin $REPO_URL
-              fi
               git fetch origin
               git checkout $BRANCH
               git pull origin $BRANCH
             else
-              echo "克隆仓库（使用 SSH）..."
+              echo "克隆仓库..."
+              rm -rf $APP_DIR/*
               git clone $REPO_URL .
               git checkout $BRANCH
             fi
             
-            # 显示当前版本
             CURRENT_COMMIT=$(git rev-parse --short HEAD)
-            echo "部署版本: $CURRENT_COMMIT"
+            echo "当前版本: $CURRENT_COMMIT"
             
-            # 构建 Docker 镜像
-            echo "开始构建 Docker 镜像..."
+            echo "构建 Docker 镜像..."
             docker build -t crawler-service:latest -t crawler-service:$CURRENT_COMMIT .
             
-            # 停止旧容器
-            echo "停止旧容器..."
+            echo "重启容器..."
             docker compose down || true
-            
-            # 启动新容器
-            echo "启动新容器..."
             docker compose up -d
             
-            # 清理资源
-            echo "清理旧镜像..."
+            echo "清理资源..."
             docker image prune -f
             docker system prune -f --filter "until=24h"
             
-            # 显示服务状态
-            echo "=== 部署完成 ==="
-            docker ps --filter "name=crawler-service"
+            echo "部署完成"
