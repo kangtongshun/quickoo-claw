@@ -10,6 +10,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # 添加这行，允许写入 GitHub Packages
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
