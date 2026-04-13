@@ -4,7 +4,7 @@
 # 设置变量
 APP_NAME="crawler-service"
 APP_DIR="/opt/$APP_NAME"
-GIT_REPO="https://github.com/yourusername/your-repo.git"
+GIT_REPO="https://github.com/kangtongshun/quickoo-claw.git"
 BRANCH="main"
 
 # 颜色输出
