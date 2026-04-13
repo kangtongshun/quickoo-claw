@@ -46,6 +46,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
+            # 创建目录（如果不存在）
+            mkdir -p /app/crawler-service
             cd /app/crawler-service
             docker pull ghcr.io/${{ github.repository }}:latest
             docker-compose down
