@@ -1,0 +1,46 @@
+{
+  "name": "nodejs-puppeteer-crawler-service",
+  "version": "1.0.0",
+  "description": "基于 Node.js + Puppeteer 的爬虫服务，支持基础爬虫、产品数据抓取、代理轮换、任务队列等功能",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "example": "node example.js",
+    "basic": "node basic-crawler.js",
+    "product": "node product-crawler.js",
+    "advanced": "node advanced-crawler.js"
+  },
+  "keywords": [
+    "crawler",
+    "puppeteer",
+    "web-scraping",
+    "nodejs",
+    "headless-chrome",
+    "spider",
+    "data-mining"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^21.6.1",
+    "cheerio": "^1.0.0-rc.12",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "private": false
+}
