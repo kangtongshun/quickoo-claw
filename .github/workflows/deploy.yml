@@ -29,7 +29,7 @@ jobs:
             echo "配置 GitHub SSH 密钥..."
             mkdir -p /home/${{ secrets.SERVER_USER }}/.ssh
             # 从 secrets 中读取 GitHub SSH 私钥
-            echo "${{ secrets.GITHUB_SSH_PRIVATE_KEY }}" > $SSH_KEY_PATH
+            echo "${{ secrets.SSH_PRIVATE_KEY }}" > $SSH_KEY_PATH
             chmod 600 $SSH_KEY_PATH
             
             # 配置 SSH config
