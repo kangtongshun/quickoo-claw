@@ -27,20 +27,12 @@ jobs:
             BRANCH="${{ github.ref_name }}"
             APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
             echo "配置 GitHub SSH 密钥..."
-            mkdir -p /home/${{ secrets.SERVER_USER }}/.ssh
-            # 从 secrets 中读取 GitHub SSH 私钥
-            echo "${{ secrets.SSH_PRIVATE_KEY }}" > $SSH_KEY_PATH
-            chmod 600 $SSH_KEY_PATH
+            # 配置 Git 使用指定的 SSH 密钥（临时方式）
+            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i /tmp/deploy_key_$$"
             
-            # 配置 SSH config
-            cat >> /home/${{ secrets.SERVER_USER }}/.ssh/config << EOF
-            Host github.com
-              HostName github.com
-              User git
-              IdentityFile $SSH_KEY_PATH
-              StrictHostKeyChecking no
-            EOF
-            chmod 600 /home/${{ secrets.SERVER_USER }}/.ssh/config
+            # 将私钥写入临时文件
+            echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key_$$
+            chmod 600 /tmp/deploy_key_$$
             echo "开始部署 - 分支: $BRANCH $APP_DIR"
             
             mkdir -p $APP_DIR
@@ -67,5 +59,6 @@ jobs:
             echo "清理资源..."
             docker image prune -f
             docker system prune -f --filter "until=24h"
-            
+            rm -f /tmp/deploy_key_$$
+
             echo "部署完成"
