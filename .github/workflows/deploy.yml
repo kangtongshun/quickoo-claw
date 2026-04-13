@@ -10,9 +10,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     
     steps:
       - name: Deploy to Server
@@ -24,44 +21,65 @@ jobs:
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
             # 设置变量
-            REPO_URL="https://github.com/${{ github.repository }}.git"
+            REPO_URL="git@github.com:${{ github.repository }}.git"
             BRANCH="${{ github.ref_name }}"
             APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
             
-            # 创建目录（如果不存在）
+            # 创建应用目录
             mkdir -p $APP_DIR
-            
-            # 进入应用目录
             cd $APP_DIR
             
-            # 如果目录已存在且是 git 仓库，拉取最新代码；否则克隆仓库
+            # 拉取代码（使用 SSH）
             if [ -d ".git" ]; then
-              echo "Pulling latest code from $BRANCH branch..."
+              echo "拉取最新代码..."
+              
+              # 检查并更新 remote URL 为 SSH
+              CURRENT_URL=$(git config --get remote.origin.url)
+              if [[ ! "$CURRENT_URL" =~ ^git@ ]]; then
+                echo "将 remote URL 从 HTTPS 改为 SSH..."
+                git remote set-url origin $REPO_URL
+              fi
+              
               git fetch origin
               git checkout $BRANCH
               git pull origin $BRANCH
             else
-              echo "Cloning repository..."
+              echo "克隆仓库（使用 SSH）..."
               git clone $REPO_URL .
               git checkout $BRANCH
             fi
             
-            # 显示当前 commit
-            echo "Current commit:"
-            git log -1 --oneline
+            # 显示当前版本
+            CURRENT_COMMIT=$(git rev-parse --short HEAD)
+            echo "部署版本: $CURRENT_COMMIT"
+            echo "分支: $BRANCH"
             
             # 构建 Docker 镜像
-            echo "Building Docker image..."
-            docker build -t crawler-service:latest .
+            echo "开始构建 Docker 镜像..."
+            docker build -t crawler-service:latest -t crawler-service:$CURRENT_COMMIT .
             
-            # 停止并移除旧容器
-            echo "Stopping old container..."
+            # 停止旧容器
+            echo "停止旧容器..."
             docker compose down || true
             
             # 启动新容器
-            echo "Starting new container..."
+            echo "启动新容器..."
             docker compose up -d
             
-            # 清理旧镜像和未使用的资源
-            echo "Cleaning up..."
-            docker system prune -f
+            # 查看容器状态
+            echo "容器状态:"
+            docker ps | grep crawler-service
+            
+            # 查看日志（前20行）
+            echo "最近日志:"
+            docker logs --tail 20 crawler-service || echo "容器启动中，暂无日志"
+            
+            # 清理旧镜像
+            echo "清理旧镜像..."
+            docker image prune -f
+            
+            # 删除旧版本镜像（保留最近5个）
+            docker images crawler-service --format "table {{.Repository}}:{{.Tag}} {{.CreatedAt}}" | grep -v "latest" | tail -n +6 | awk '{print $1}' | xargs -r docker rmi || true
+            
+            # 清理未使用的资源
+            docker system prune -f --filter "until=24h"
