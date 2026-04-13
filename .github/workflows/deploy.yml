@@ -50,6 +50,6 @@ jobs:
             mkdir -p ~/app/crawler-service
             cd ~/app/crawler-service
             docker pull ghcr.io/${{ github.repository }}:latest
-            docker-compose down
-            docker-compose up -d
+            docker compose down
+            docker compose up -d
             docker system prune -f
