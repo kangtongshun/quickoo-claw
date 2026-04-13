@@ -30,6 +30,8 @@ jobs:
             echo "开始部署 - 分支: $BRANCH $APP_DIR"
             
             mkdir -p $APP_DIR
+             
+            echo "mkdir  $APP_DIR"
             cd $APP_DIR
             
             if [ -d ".git" ]; then
