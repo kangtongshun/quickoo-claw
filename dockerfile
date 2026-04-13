@@ -1,5 +1,5 @@
 # Dockerfile - 修改后的版本
-FROM node:18-slim
+FROM node:22-slim
 
 # 安装 Chromium 依赖
 RUN apt-get update && apt-get install -y \
