@@ -12,32 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write  # 添加这行，允许写入 GitHub Packages
+      packages: write
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Login to Docker Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/quickoo-claw:latest
-            ghcr.io/${{ github.repository_owner }}/quickoo-claw:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Deploy to Server
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -46,10 +23,45 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
+            # 设置变量
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            BRANCH="${{ github.ref_name }}"
+            APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
+            
             # 创建目录（如果不存在）
-            mkdir -p ~/app/crawler-service
-            cd ~/app/crawler-service
-            docker pull ghcr.io/${{ github.repository }}:latest
-            docker compose down
+            mkdir -p $APP_DIR
+            
+            # 进入应用目录
+            cd $APP_DIR
+            
+            # 如果目录已存在且是 git 仓库，拉取最新代码；否则克隆仓库
+            if [ -d ".git" ]; then
+              echo "Pulling latest code from $BRANCH branch..."
+              git fetch origin
+              git checkout $BRANCH
+              git pull origin $BRANCH
+            else
+              echo "Cloning repository..."
+              git clone $REPO_URL .
+              git checkout $BRANCH
+            fi
+            
+            # 显示当前 commit
+            echo "Current commit:"
+            git log -1 --oneline
+            
+            # 构建 Docker 镜像
+            echo "Building Docker image..."
+            docker build -t crawler-service:latest .
+            
+            # 停止并移除旧容器
+            echo "Stopping old container..."
+            docker compose down || true
+            
+            # 启动新容器
+            echo "Starting new container..."
             docker compose up -d
+            
+            # 清理旧镜像和未使用的资源
+            echo "Cleaning up..."
             docker system prune -f
