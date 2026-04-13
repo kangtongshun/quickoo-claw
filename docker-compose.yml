@@ -1,0 +1,48 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  crawler:
+    build: .
+    container_name: nodejs-crawler-service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - TZ=Asia/Shanghai
+      # Puppeteer 配置
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+      # 可选：代理配置（如果需要）
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+    volumes:
+      # 持久化数据目录
+      - ./data:/app/data
+      - ./screenshots:/app/screenshots
+      - ./logs:/app/logs
+      # 可选：挂载配置文件
+      - ./config.json:/app/config.json:ro
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    # 网络配置
+    networks:
+      - crawler-network
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  crawler-network:
+    driver: bridge
