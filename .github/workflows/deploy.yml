@@ -27,7 +27,7 @@ jobs:
             BRANCH="${{ github.ref_name }}"
             APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
             
-            echo "开始部署 - 分支: $BRANCH"
+            echo "开始部署 - 分支: $BRANCH $APP_DIR"
             
             mkdir -p $APP_DIR
             cd $APP_DIR
