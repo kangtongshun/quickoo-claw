@@ -28,11 +28,8 @@ jobs:
             APP_DIR="/home/${{ secrets.SERVER_USER }}/app/crawler-service"
             echo "配置 GitHub SSH 密钥..."
             # 配置 Git 使用指定的 SSH 密钥（临时方式）
-            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i /tmp/deploy_key_$$"
-            # 将私钥写入临时文件
-            echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key_$$
-            cat /tmp/deploy_key_$$
-            chmod 600 /tmp/deploy_key_$$
+            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i ~/.ssh/github_deploy_key"
+         
             echo "开始部署 - 分支: $BRANCH $APP_DIR"
             
             mkdir -p $APP_DIR
