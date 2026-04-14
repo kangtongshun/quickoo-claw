@@ -67,7 +67,7 @@ class BasicCrawler {
             const html = await page.content();
             
             // 截图（可选）
-            if options.screenshot) {
+            if (options.screenshot) {
                 await page.screenshot({ path: `screenshots/${Date.now()}.png` });
             }
             
