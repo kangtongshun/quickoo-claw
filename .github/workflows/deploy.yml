@@ -20,7 +20,7 @@ jobs:
           port: ${{ secrets.SERVER_PORT || 22 }}
           script_stop: true
           script: |
-            set -e
+            set -x
             
             # 设置仓库信息
             REPO_URL="git@github.com:${{ github.repository }}.git"
