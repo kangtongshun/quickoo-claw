@@ -46,7 +46,7 @@ jobs:
             
             # 构建和部署
             echo "构建 Docker 镜像..."
-            docker build -t crawler-service:latest -t crawler-service:$CURRENT_COMMIT .
+            docker build -t  --no-cache crawler-service:latest -t crawler-service:$CURRENT_COMMIT .
             
             echo "重启容器..."
             docker compose down || true
