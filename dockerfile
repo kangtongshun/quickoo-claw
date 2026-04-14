@@ -36,9 +36,9 @@ COPY package*.json ./
 
 # 检查是否有 package-lock.json，没有则使用 npm install
 RUN if [ -f package-lock.json ]; then \
-        npm ci --only=production --omit=dev || true; \
+        npm ci --only=production --omit=dev --registry=https://registry.npmmirror.com || true; \
     else \
-        npm install --only=production; \
+        npm install --only=production --registry=https://registry.npmmirror.com; \
     fi && \
     npm cache clean --force
 
