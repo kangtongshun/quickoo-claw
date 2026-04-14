@@ -36,8 +36,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # 使用淘宝镜像源安装
-RUN npm ci --only=production --omit=dev --registry=https://registry.npmmirror.com || \
-    npm install --only=production --registry=https://registry.npmmirror.com
+RUN npm install --only=production --registry=https://registry.npmmirror.com
 
 # 创建必要的目录
 RUN mkdir -p /app/data /app/screenshots /app/logs
