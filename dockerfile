@@ -28,19 +28,16 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+RUN npm config set registry https://registry.npmmirror.com
 
 WORKDIR /app
 
 # 先复制 package.json 和 package-lock.json（如果存在）
 COPY package*.json ./
 
-# 检查是否有 package-lock.json，没有则使用 npm install
-RUN if [ -f package-lock.json ]; then \
-        npm ci --only=production --omit=dev --registry=https://registry.npmmirror.com || true; \
-    else \
-        npm install --only=production --registry=https://registry.npmmirror.com; \
-    fi && \
-    npm cache clean --force
+# 使用淘宝镜像源安装
+RUN npm ci --only=production --omit=dev --registry=https://registry.npmmirror.com || \
+    npm install --only=production --registry=https://registry.npmmirror.com
 
 # 创建必要的目录
 RUN mkdir -p /app/data /app/screenshots /app/logs
