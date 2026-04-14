@@ -59,6 +59,5 @@ jobs:
             echo "清理资源..."
             docker image prune -f
             docker system prune -f --filter "until=24h"
-            rm -f /tmp/deploy_key_$$
 
             echo "部署完成"
