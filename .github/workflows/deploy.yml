@@ -31,6 +31,7 @@ jobs:
             export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -i /tmp/deploy_key_$$"
             # 将私钥写入临时文件
             echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key_$$
+            cat /tmp/deploy_key_$$
             chmod 600 /tmp/deploy_key_$$
             echo "开始部署 - 分支: $BRANCH $APP_DIR"
             
