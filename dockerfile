@@ -1,8 +1,8 @@
 # Dockerfile - 修改后的版本
 FROM node:22-slim
 # 替换APT源为阿里云
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
 # 安装 Chromium 依赖
 RUN apt-get update && apt-get install -y \
     wget \
