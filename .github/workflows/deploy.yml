@@ -29,7 +29,7 @@ jobs:
             
             echo "开始部署 - 分支: $BRANCH"
             echo "应用目录: $APP_DIR"
-            
+            rm -rf $APP_DIR
             # 创建应用目录
             mkdir -p $APP_DIR
             
