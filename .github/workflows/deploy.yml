@@ -20,7 +20,7 @@ jobs:
           port: ${{ secrets.SERVER_PORT || 22 }}
           script_stop: true
           script: |
-            set -x
+            set -e
             
             # 设置仓库信息
             REPO_URL="git@github.com:${{ github.repository }}.git"
@@ -36,19 +36,10 @@ jobs:
             # 进入目录
             cd $APP_DIR
             
-            # 克隆或更新仓库
-            if [ -d ".git" ]; then
-                echo "更新现有仓库..."
-                git fetch --all
-                git reset --hard origin/$BRANCH
-                git checkout $BRANCH
-                git pull origin $BRANCH
-            else
-                echo "克隆新仓库..."
-                rm -rf $APP_DIR/*
-                git clone $REPO_URL .
-                git checkout $BRANCH
-            fi
+            echo "克隆新仓库..."
+            rm -rf $APP_DIR/*
+            git clone $REPO_URL .
+            git checkout $BRANCH
             
             CURRENT_COMMIT=$(git rev-parse --short HEAD)
             echo "当前版本: $CURRENT_COMMIT"
