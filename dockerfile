@@ -1,10 +1,13 @@
-# Dockerfile - 修改后的版本
+# Dockerfile - 修正版
 FROM node:22-slim
+
 # 替换APT源为阿里云
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
     sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
-# 安装 Chromium 依赖
+
+# 安装 Chromium 浏览器及其依赖
 RUN apt-get update && apt-get install -y \
+    chromium \
     wget \
     gnupg \
     ca-certificates \
@@ -28,26 +31,23 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+
+# 设置 Chromium 路径（Debian slim 中 chromium 的默认路径）
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     PUPPETEER_SKIP_DOWNLOAD=true
+
 RUN npm config set registry https://registry.npmmirror.com
 
 WORKDIR /app
 
-# 先复制 package.json 和 package-lock.json（如果存在）
 COPY package*.json ./
-
-# 使用淘宝镜像源安装
 RUN npm install --only=production --registry=https://registry.npmmirror.com
 
-# 创建必要的目录
 RUN mkdir -p /app/data /app/screenshots /app/logs
 
-# 复制应用代码
 COPY . .
 
-# 创建非 root 用户运行
 RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
     && chown -R pptruser:pptruser /app
 
