@@ -43,7 +43,18 @@ jobs:
             
             CURRENT_COMMIT=$(git rev-parse --short HEAD)
             echo "当前版本: $CURRENT_COMMIT"
+            # 创建 .env 文件（从 GitHub Secrets）
+            echo "创建配置文件..."
+            cat > .env << EOF
+            # PaddleOCR 配置
+            PADDLEOCR_TOKEN=${{ secrets.PADDLEOCR_TOKEN }}
+            PADDLEOCR_JOB_URL=${{ secrets.PADDLEOCR_JOB_URL }}
+            PADDLEOCR_MODEL=${{ secrets.PADDLEOCR_MODEL }}
             
+            # 服务配置
+            PORT=${{ secrets.PORT }}
+            UPLOAD_LIMIT=${{ secrets.UPLOAD_LIMIT }}
+            EOF
             # 构建和部署
             echo "构建 Docker 镜像..."
             docker build -t crawler-service:latest -t crawler-service:$CURRENT_COMMIT .
