@@ -36,6 +36,8 @@ RUN apt-get update && apt-get install -y \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     PUPPETEER_SKIP_DOWNLOAD=true
+    XDG_CONFIG_HOME="$WORKSPACE@tmp/.chromium"
+    XDG_CACHE_HOME="$WORKSPACE@tmp/.chromium"
 
 RUN npm config set registry https://registry.npmmirror.com
 
