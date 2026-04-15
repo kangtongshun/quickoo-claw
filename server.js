@@ -5,6 +5,7 @@ const AdvancedCrawler = require('./advanced-crawler');
 
 const app = express();
 app.use(express.json());
+const allTasks = {}; // 用 taskId 作为 key
 
 // 爬虫任务队列
 const taskQueue = [];
@@ -21,14 +22,16 @@ app.post('/api/scrape', async (req, res) => {
     }
     
     const taskId = Date.now().toString();
-    taskQueue.push({
+    const task = {
         id: taskId,
         url,
         type: type || 'basic',
         config: config || {},
         status: 'pending',
         createdAt: new Date()
-    });
+    }
+    allTasks[taskId] = task;
+    taskQueue.push();
     
     // 启动任务处理
     processQueue();
@@ -44,12 +47,13 @@ app.post('/api/scrape', async (req, res) => {
  * 查询任务状态和结果
  */
 app.get('/api/task/:taskId', async (req, res) => {
-    const task = taskQueue.find(t => t.id === req.params.taskId);
-    
+    let task = taskQueue.find(t => t.id === req.params.taskId);
+    if (!task) {
+        task = allTasks[req.params.taskId];
+    }
     if (!task) {
         return res.status(404).json({ error: 'Task not found' });
     }
-    
     res.json({
         id: task.id,
         status: task.status,
