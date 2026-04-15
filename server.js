@@ -31,7 +31,7 @@ app.post('/api/scrape', async (req, res) => {
         createdAt: new Date()
     }
     allTasks[taskId] = task;
-    taskQueue.push();
+    taskQueue.push(task);
     
     // 启动任务处理
     processQueue();
