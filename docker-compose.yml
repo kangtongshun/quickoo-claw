@@ -1,10 +1,9 @@
-# docker-compose.yml
 version: '3.8'
 
 services:
   crawler:
-    build: .
-    container_name: crawler-service:latest
+    image: crawler-service:latest  # 使用已构建的镜像，而不是 build
+    container_name: crawler-service  # 修改：容器名应该只包含名称，不应该包含标签
     restart: unless-stopped
     ports:
       - "3000:3000"
