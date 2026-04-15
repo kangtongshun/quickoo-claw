@@ -35,9 +35,9 @@ RUN apt-get update && apt-get install -y \
 # 设置 Chromium 路径（Debian slim 中 chromium 的默认路径）
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
-    PUPPETEER_SKIP_DOWNLOAD=true
-    XDG_CONFIG_HOME="$WORKSPACE@tmp/.chromium"
-    XDG_CACHE_HOME="$WORKSPACE@tmp/.chromium"
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    XDG_CONFIG_HOME="/tmp/.chromium" \
+    XDG_CACHE_HOME="/tmp/.chromium"
 
 RUN npm config set registry https://registry.npmmirror.com
 
