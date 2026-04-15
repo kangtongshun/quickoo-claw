@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const multer = require('multer');
 const axios = require('axios');
@@ -5,17 +6,56 @@ const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const ProductCrawler = require('./product-crawler');
+const AdvancedCrawler = require('./advanced-crawler');
+
+// 加载环境变量（优先级：系统环境变量 > .env 文件）
+require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(express.json());
 
-// PaddleOCR API 配置
-const JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs";
-const TOKEN = "e587240b3278e1a1a37bff0cf2c216a49ccd4727";
-const MODEL = "PaddleOCR-VL-1.5";
+// ==================== 配置加载 ====================
+const config = {
+    // PaddleOCR 配置
+    paddleocr: {
+        jobUrl: process.env.PADDLEOCR_JOB_URL || "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs",
+        token: process.env.PADDLEOCR_TOKEN,
+        model: process.env.PADDLEOCR_MODEL || "PaddleOCR-VL-1.5"
+    },
+    // 服务配置
+    server: {
+        port: process.env.PORT || 3000,
+        uploadLimit: parseInt(process.env.UPLOAD_LIMIT) || 50 * 1024 * 1024 // 50MB
+    }
+};
 
-// 存储任务信息（生产环境建议使用 Redis 或数据库）
-const tasks = new Map();
+// 验证必需的配置
+if (!config.paddleocr.token) {
+    console.error('❌ 错误: PADDLEOCR_TOKEN 环境变量未设置');
+    console.error('请在 .env 文件中设置 PADDLEOCR_TOKEN 或在 GitHub Secrets 中配置');
+    console.error('示例: PADDLEOCR_TOKEN=your_token_here');
+    process.exit(1);
+}
+
+console.log('✓ 配置加载成功');
+console.log(`  PaddleOCR Token: ${config.paddleocr.token.substring(0, 10)}...`);
+console.log(`  PaddleOCR Model: ${config.paddleocr.model}`);
+console.log(`  服务端口: ${config.server.port}`);
+console.log(`  上传限制: ${config.server.uploadLimit / 1024 / 1024}MB`);
+
+// ==================== 爬虫相关 ====================
+const allTasks = {};
+const taskQueue = [];
+let isProcessing = false;
+
+// ==================== OCR 相关配置 ====================
+const JOB_URL = config.paddleocr.jobUrl;
+const TOKEN = config.paddleocr.token;
+const MODEL = config.paddleocr.model;
+
+// 存储 OCR 任务信息
+const ocrTasks = new Map();
 
 // 创建上传目录
 const uploadDir = path.join(__dirname, 'uploads');
@@ -35,7 +75,7 @@ const storage = multer.diskStorage({
 const upload = multer({ 
     storage: storage,
     limits: {
-        fileSize: 50 * 1024 * 1024
+        fileSize: config.server.uploadLimit
     },
     fileFilter: (req, file, cb) => {
         const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
@@ -47,7 +87,7 @@ const upload = multer({
     }
 });
 
-// 提交OCR任务
+// ==================== OCR 辅助函数 ====================
 async function submitOCRTask(filePath, isUrl = false, optionalPayload = {}) {
     const headers = {
         "Authorization": `bearer ${TOKEN}`
@@ -94,7 +134,6 @@ async function submitOCRTask(filePath, isUrl = false, optionalPayload = {}) {
     return response.data.data.jobId;
 }
 
-// 查询任务状态
 async function getJobStatus(jobId) {
     const response = await axios.get(`${JOB_URL}/${jobId}`, {
         headers: { "Authorization": `bearer ${TOKEN}` }
@@ -139,7 +178,6 @@ async function getJobStatus(jobId) {
     return result;
 }
 
-// 获取完整结果（下载并解析）
 async function getFullResult(jsonlUrl) {
     const response = await axios.get(jsonlUrl);
     const lines = response.data.trim().split('\n');
@@ -156,14 +194,177 @@ async function getFullResult(jsonlUrl) {
     return results;
 }
 
-// API 路由
+// ==================== 爬虫函数 ====================
+async function processQueue() {
+    if (isProcessing || taskQueue.length === 0) return;
+    
+    isProcessing = true;
+    
+    while (taskQueue.length > 0) {
+        const task = taskQueue.shift();
+        task.status = 'processing';
+        
+        try {
+            const result = await executeTask(task);
+            task.status = 'completed';
+            task.result = result;
+            task.completedAt = new Date();
+        } catch (error) {
+            task.status = 'failed';
+            task.error = error.message;
+            task.completedAt = new Date();
+        }
+        allTasks[task.id] = task;
+    }
+    
+    isProcessing = false;
+}
+
+async function executeTask(task) {
+    const crawler = new AdvancedCrawler({ headless: true });
+    
+    try {
+        const result = await crawler.scrapeWithRetry(task.url, {
+            waitUntil: 'networkidle2',
+            extractScript: task.config.extractScript ? eval(task.config.extractScript) : null
+        });
+        
+        await crawler.close();
+        return result;
+        
+    } catch (error) {
+        await crawler.close();
+        throw error;
+    }
+}
+
+// ==================== API 路由 ====================
 
 // 健康检查
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({ 
+        status: 'healthy',
+        config: {
+            paddleocrConfigured: !!TOKEN,
+            uploadLimit: config.server.uploadLimit,
+            model: MODEL
+        },
+        crawlerQueueLength: taskQueue.length,
+        ocrTasksCount: ocrTasks.size,
+        timestamp: new Date()
+    });
 });
 
-// 上传文件进行OCR识别
+// 配置信息接口（不返回敏感信息）
+app.get('/config', (req, res) => {
+    res.json({
+        paddleocr: {
+            configured: !!TOKEN,
+            model: MODEL,
+            jobUrl: JOB_URL
+        },
+        server: {
+            uploadLimit: config.server.uploadLimit,
+            port: config.server.port
+        }
+    });
+});
+
+// ==================== 爬虫接口 ====================
+
+/**
+ * 提交爬虫任务
+ */
+app.post('/api/scrape', async (req, res) => {
+    const { url, type, config } = req.body;
+    
+    if (!url) {
+        return res.status(400).json({ error: 'URL is required' });
+    }
+    
+    const taskId = Date.now().toString();
+    const task = {
+        id: taskId,
+        url,
+        type: type || 'basic',
+        config: config || {},
+        status: 'pending',
+        createdAt: new Date()
+    };
+    allTasks[taskId] = task;
+    taskQueue.push(task);
+    
+    processQueue();
+    
+    res.json({ 
+        taskId, 
+        status: 'pending',
+        message: 'Task submitted successfully' 
+    });
+});
+
+/**
+ * 查询爬虫任务状态和结果
+ */
+app.get('/api/task/:taskId', async (req, res) => {
+    let task = taskQueue.find(t => t.id === req.params.taskId);
+    if (!task) {
+        task = allTasks[req.params.taskId];
+    }
+    if (!task) {
+        return res.status(404).json({ error: 'Task not found' });
+    }
+    res.json({
+        id: task.id,
+        status: task.status,
+        result: task.result,
+        error: task.error,
+        createdAt: task.createdAt,
+        completedAt: task.completedAt
+    });
+});
+
+/**
+ * 产品爬虫专用接口
+ */
+app.post('/api/scrape/products', async (req, res) => {
+    const { url, productSelector, titleSelector, priceSelector } = req.body;
+    
+    if (!url || !productSelector) {
+        return res.status(400).json({ error: 'URL and productSelector are required' });
+    }
+    
+    const crawler = new ProductCrawler({ headless: true });
+    
+    try {
+        const products = await crawler.scrapeProductList(url, {
+            productSelector: productSelector,
+            titleSelector: titleSelector,
+            priceSelector: priceSelector,
+            baseUrl: new URL(url).origin
+        });
+        
+        await crawler.close();
+        
+        res.json({
+            success: true,
+            total: products.length,
+            products: products
+        });
+        
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+// ==================== OCR 接口 ====================
+
+/**
+ * 上传文件进行OCR识别
+ */
 app.post('/ocr/upload', upload.single('file'), async (req, res) => {
     let uploadedFilePath = null;
     const taskId = uuidv4();
@@ -175,16 +376,12 @@ app.post('/ocr/upload', upload.single('file'), async (req, res) => {
         
         uploadedFilePath = req.file.path;
         
-        console.log(`收到OCR请求，任务ID: ${taskId}, 文件: ${req.file.originalname}`);
+        console.log(`[OCR] 收到请求，任务ID: ${taskId}, 文件: ${req.file.originalname}`);
         
-        // 解析可选参数
         const optionalPayload = req.body.options ? JSON.parse(req.body.options) : {};
-        
-        // 提交OCR任务
         const jobId = await submitOCRTask(uploadedFilePath, false, optionalPayload);
         
-        // 存储任务信息
-        tasks.set(taskId, {
+        ocrTasks.set(taskId, {
             taskId,
             jobId,
             originalFile: req.file.originalname,
@@ -192,7 +389,6 @@ app.post('/ocr/upload', upload.single('file'), async (req, res) => {
             status: 'submitted'
         });
         
-        // 清理临时文件
         if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
             fs.unlinkSync(uploadedFilePath);
         }
@@ -201,13 +397,12 @@ app.post('/ocr/upload', upload.single('file'), async (req, res) => {
             success: true,
             taskId: taskId,
             jobId: jobId,
-            message: '任务已提交，请使用 taskId 查询结果'
+            message: 'OCR任务已提交，请使用 taskId 查询结果'
         });
         
     } catch (error) {
-        console.error('提交失败:', error);
+        console.error('[OCR] 提交失败:', error);
         
-        // 清理临时文件
         if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
             try {
                 fs.unlinkSync(uploadedFilePath);
@@ -223,7 +418,9 @@ app.post('/ocr/upload', upload.single('file'), async (req, res) => {
     }
 });
 
-// 使用URL进行OCR识别
+/**
+ * 使用URL进行OCR识别
+ */
 app.post('/ocr/url', express.json(), async (req, res) => {
     const taskId = uuidv4();
     
@@ -234,13 +431,11 @@ app.post('/ocr/url', express.json(), async (req, res) => {
             return res.status(400).json({ error: '请提供文件URL' });
         }
         
-        console.log(`收到OCR URL请求，任务ID: ${taskId}, URL: ${url}`);
+        console.log(`[OCR] 收到URL请求，任务ID: ${taskId}, URL: ${url}`);
         
-        // 提交OCR任务
         const jobId = await submitOCRTask(url, true, options || {});
         
-        // 存储任务信息
-        tasks.set(taskId, {
+        ocrTasks.set(taskId, {
             taskId,
             jobId,
             originalUrl: url,
@@ -252,11 +447,11 @@ app.post('/ocr/url', express.json(), async (req, res) => {
             success: true,
             taskId: taskId,
             jobId: jobId,
-            message: '任务已提交，请使用 taskId 查询结果'
+            message: 'OCR任务已提交，请使用 taskId 查询结果'
         });
         
     } catch (error) {
-        console.error('提交失败:', error);
+        console.error('[OCR] 提交失败:', error);
         res.status(500).json({
             success: false,
             error: error.message || '提交失败'
@@ -264,20 +459,20 @@ app.post('/ocr/url', express.json(), async (req, res) => {
     }
 });
 
-// 查询任务状态（简化版）
+/**
+ * 查询OCR任务状态
+ */
 app.get('/ocr/status/:taskId', async (req, res) => {
     try {
         const { taskId } = req.params;
-        const task = tasks.get(taskId);
+        const task = ocrTasks.get(taskId);
         
         if (!task) {
-            return res.status(404).json({ error: '任务不存在' });
+            return res.status(404).json({ error: 'OCR任务不存在' });
         }
         
-        // 查询 PaddleOCR 任务状态
         const status = await getJobStatus(task.jobId);
         
-        // 更新存储的状态
         task.status = status.state;
         task.lastCheck = Date.now();
         if (status.progress) {
@@ -287,7 +482,7 @@ app.get('/ocr/status/:taskId', async (req, res) => {
             task.errorMsg = status.errorMsg;
         }
         
-        tasks.set(taskId, task);
+        ocrTasks.set(taskId, task);
         
         res.json({
             taskId: task.taskId,
@@ -300,24 +495,25 @@ app.get('/ocr/status/:taskId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('查询失败:', error);
+        console.error('[OCR] 查询失败:', error);
         res.status(500).json({
             error: error.message || '查询失败'
         });
     }
 });
 
-// 获取完整OCR结果
+/**
+ * 获取完整OCR结果
+ */
 app.get('/ocr/result/:taskId', async (req, res) => {
     try {
         const { taskId } = req.params;
-        const task = tasks.get(taskId);
+        const task = ocrTasks.get(taskId);
         
         if (!task) {
-            return res.status(404).json({ error: '任务不存在' });
+            return res.status(404).json({ error: 'OCR任务不存在' });
         }
         
-        // 先查询状态
         const status = await getJobStatus(task.jobId);
         
         if (status.state !== 'done') {
@@ -332,7 +528,6 @@ app.get('/ocr/result/:taskId', async (req, res) => {
             });
         }
         
-        // 获取完整结果
         const results = await getFullResult(status.resultUrl.jsonUrl);
         
         res.json({
@@ -342,16 +537,18 @@ app.get('/ocr/result/:taskId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('获取结果失败:', error);
+        console.error('[OCR] 获取结果失败:', error);
         res.status(500).json({
             error: error.message || '获取结果失败'
         });
     }
 });
 
-// 列出所有任务
+/**
+ * 列出所有OCR任务
+ */
 app.get('/ocr/tasks', (req, res) => {
-    const taskList = Array.from(tasks.values()).map(task => ({
+    const taskList = Array.from(ocrTasks.values()).map(task => ({
         taskId: task.taskId,
         jobId: task.jobId,
         status: task.status,
@@ -366,38 +563,50 @@ app.get('/ocr/tasks', (req, res) => {
     });
 });
 
-// 删除任务记录
+/**
+ * 删除OCR任务记录
+ */
 app.delete('/ocr/task/:taskId', (req, res) => {
     const { taskId } = req.params;
     
-    if (!tasks.has(taskId)) {
-        return res.status(404).json({ error: '任务不存在' });
+    if (!ocrTasks.has(taskId)) {
+        return res.status(404).json({ error: 'OCR任务不存在' });
     }
     
-    tasks.delete(taskId);
-    res.json({ success: true, message: '任务已删除' });
+    ocrTasks.delete(taskId);
+    res.json({ success: true, message: 'OCR任务已删除' });
 });
 
-// 错误处理中间件
+// ==================== 错误处理中间件 ====================
 app.use((err, req, res, next) => {
     if (err instanceof multer.MulterError) {
         if (err.code === 'FILE_TOO_LARGE') {
-            return res.status(400).json({ error: '文件过大，最大支持50MB' });
+            return res.status(400).json({ error: `文件过大，最大支持${config.server.uploadLimit / 1024 / 1024}MB` });
         }
         return res.status(400).json({ error: err.message });
     }
-    res.status(500).json({ error: err.message });
+    console.error('[Server] 错误:', err);
+    res.status(500).json({ error: err.message || '服务器内部错误' });
 });
 
-// 启动服务器
+// 启动服务
+const PORT = config.server.port;
 app.listen(PORT, () => {
-    console.log(`OCR服务已启动: http://localhost:${PORT}`);
-    console.log(`上传目录: ${uploadDir}`);
-    console.log(`API 接口:`);
-    console.log(`  POST   /ocr/upload      - 上传文件识别`);
-    console.log(`  POST   /ocr/url         - URL识别`);
-    console.log(`  GET    /ocr/status/:taskId - 查询状态`);
-    console.log(`  GET    /ocr/result/:taskId - 获取完整结果`);
-    console.log(`  GET    /ocr/tasks       - 列出所有任务`);
-    console.log(`  DELETE /ocr/task/:taskId   - 删除任务`);
+    console.log(`\n🚀 Server running on port ${PORT}`);
+    console.log(`\n📋 配置状态:`);
+    console.log(`  PaddleOCR Token: ${TOKEN ? '✓ 已配置' : '✗ 未配置'}`);
+    console.log(`  PaddleOCR Model: ${MODEL}`);
+    console.log(`  上传限制: ${config.server.uploadLimit / 1024 / 1024}MB`);
+    console.log(`\n🔧 爬虫接口:`);
+    console.log(`  POST   /api/scrape           - 提交爬虫任务`);
+    console.log(`  GET    /api/task/:taskId     - 查询爬虫任务`);
+    console.log(`  POST   /api/scrape/products  - 产品爬虫`);
+    console.log(`\n📝 OCR接口:`);
+    console.log(`  POST   /ocr/upload           - 上传文件识别`);
+    console.log(`  POST   /ocr/url              - URL识别`);
+    console.log(`  GET    /ocr/status/:taskId   - 查询OCR状态`);
+    console.log(`  GET    /ocr/result/:taskId   - 获取OCR结果`);
+    console.log(`  GET    /ocr/tasks            - 列出OCR任务`);
+    console.log(`  DELETE /ocr/task/:taskId     - 删除OCR任务`);
+    console.log(`\n✅ 服务已就绪\n`);
 });
