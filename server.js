@@ -122,6 +122,8 @@ async function processQueue() {
             task.error = error.message;
             task.completedAt = new Date();
         }
+       allTasks[task.id] = task;
+
     }
     
     isProcessing = false;
